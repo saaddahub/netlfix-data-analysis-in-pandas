@@ -27,5 +27,8 @@ Thumbs.db
 # Jupyter
 .ipynb_checkpoints/
 
+# Large font asset folder (Inter font files)
+assets/inter_extracted/
+
 # Data files (large CSVs - optional, comment out if you want to include them)
 # *.csv
