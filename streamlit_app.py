@@ -624,7 +624,8 @@ class NetflixVisualizer:
 
     # ── Area – yearly trend ───────────────────────────────
     def yearly_trend_area(self, df_trend):
-        colors = {"Movie": "#E50914", "TV Show": "#3B82F6"}
+        colors     = {"Movie": "#E50914",              "TV Show": "#3B82F6"}
+        fillcolors = {"Movie": "rgba(229,9,20,0.08)",  "TV Show": "rgba(59,130,246,0.08)"}
         fig = go.Figure()
         for content_type, grp in df_trend.groupby("type"):
             fig.add_trace(go.Scatter(
@@ -634,12 +635,8 @@ class NetflixVisualizer:
                 line=dict(color=colors.get(content_type, "#888"), width=2.5),
                 marker=dict(size=6, color=colors.get(content_type, "#888")),
                 fill="tozeroy",
-                fillcolor=colors.get(content_type, "#888").replace("#", "rgba(") + ",0.08)",
+                fillcolor=fillcolors.get(content_type, "rgba(136,136,136,0.08)"),
             ))
-        # Fix fillcolor (quick approach)
-        fig.data[0].fillcolor = "rgba(229,9,20,0.08)"
-        if len(fig.data) > 1:
-            fig.data[1].fillcolor = "rgba(59,130,246,0.08)"
         return self._apply(fig, "Content Added Over Time", 360)
 
     # ── Animated bar – monthly additions ─────────────────
