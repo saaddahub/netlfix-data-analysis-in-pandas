@@ -1,397 +1,626 @@
 import streamlit as st
 import pandas as pd
-import io
 
 from src.data_loader import DataLoader
 from src.preprocessor import Preprocessor
 from src.analyzer import Analyzer
 from src.visualizer import Visualizer
 
-# ─── Page config ────────────────────────────────────────────────────────────
+# ─── Page config ─────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Netflix Data Analyzer",
+    page_title="Netflix Analytics",
     page_icon="🎬",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# ─── Custom CSS ─────────────────────────────────────────────────────────────
+# ─── Design System & Global CSS ──────────────────────────────────────────────
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 
-/* ── Base ── */
-html, body, [class*="css"] {
-    font-family: 'Inter', sans-serif !important;
-    background-color: #050505 !important;
+/* ════════════════════════════════════
+   RESET & BASE
+════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body, [class*="css"], .stApp {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
+    background: #000000 !important;
     color: #FFFFFF !important;
+    -webkit-font-smoothing: antialiased;
 }
 
-/* ── Hide default Streamlit chrome ── */
-#MainMenu, footer, header { visibility: hidden; }
+/* Hide Streamlit default chrome */
+#MainMenu, footer, header,
+[data-testid="stDecoration"],
+[data-testid="stStatusWidget"],
+[data-testid="manage-app-button"] { display: none !important; }
 
-/* ── Sidebar ── */
+/* Remove top padding */
+.block-container {
+    padding-top: 0 !important;
+    padding-bottom: 3rem !important;
+    max-width: 1300px !important;
+}
+
+/* ════════════════════════════════════
+   SIDEBAR
+════════════════════════════════════ */
 [data-testid="stSidebar"] {
-    background: #0F0F0F !important;
-    border-right: 1px solid #1a1a1a !important;
-}
-[data-testid="stSidebar"] .block-container { padding-top: 0 !important; }
-
-/* ── Main container ── */
-.main .block-container {
-    background: #050505 !important;
-    padding-top: 2rem !important;
-    max-width: 1400px !important;
+    background: #080808 !important;
+    border-right: 1px solid #161616 !important;
+    padding: 0 !important;
 }
 
-/* ── Stat cards ── */
-.stat-card {
-    background: #141414;
-    border: 1px solid #222222;
-    border-radius: 16px;
-    padding: 22px 26px;
-    display: flex;
-    align-items: center;
-    gap: 18px;
-    transition: transform 0.2s ease, border-color 0.2s ease;
-}
-.stat-card:hover {
-    transform: translateY(-2px);
-    border-color: #333333;
-}
-.stat-accent {
-    width: 5px;
-    height: 52px;
-    border-radius: 3px;
-    flex-shrink: 0;
-}
-.stat-value {
-    font-size: 2.2rem;
-    font-weight: 800;
-    color: #FFFFFF;
-    line-height: 1;
-    letter-spacing: -0.5px;
-}
-.stat-label {
-    font-size: 0.7rem;
-    font-weight: 700;
-    color: #94A3B8;
-    letter-spacing: 1.5px;
-    text-transform: uppercase;
-    margin-top: 4px;
+[data-testid="stSidebar"] > div:first-child {
+    padding: 0 !important;
 }
 
-/* ── Page title ── */
-.page-title {
-    font-size: 2.4rem;
-    font-weight: 800;
-    color: #FFFFFF;
-    letter-spacing: -0.5px;
-    margin-bottom: 0;
-    line-height: 1.1;
-}
-.page-subtitle {
-    font-size: 0.95rem;
-    color: #94A3B8;
-    margin-top: 6px;
-}
-.title-divider {
-    height: 1px;
-    background: linear-gradient(to right, #E50914, transparent);
-    margin: 18px 0 28px 0;
-    border: none;
+[data-testid="stSidebar"] .block-container {
+    padding: 0 !important;
 }
 
-/* ── Section labels ── */
-.section-label {
-    font-size: 0.68rem;
-    font-weight: 700;
-    color: #555;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    padding: 18px 0 6px 0;
+/* Kill the sidebar resize handle color */
+[data-testid="stSidebarResizeHandle"] {
+    background: #161616 !important;
 }
 
-/* ── Netflix logo header ── */
-.netflix-header {
-    background: #050505;
-    padding: 22px 20px 16px 20px;
-    text-align: center;
-    border-bottom: 2px solid #E50914;
-    margin-bottom: 8px;
+/* ════════════════════════════════════
+   BUTTONS — full override
+════════════════════════════════════ */
+[data-testid="stButton"] > button,
+[data-testid="stDownloadButton"] > button {
+    all: unset;
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    width: 100% !important;
+    padding: 11px 16px !important;
+    border-radius: 8px !important;
+    font-family: 'Inter', sans-serif !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    color: #888 !important;
+    background: transparent !important;
+    cursor: pointer !important;
+    transition: all 0.15s ease !important;
+    letter-spacing: 0.01em !important;
+    white-space: nowrap !important;
+    box-sizing: border-box !important;
 }
-.netflix-n {
-    font-size: 3.2rem;
+
+[data-testid="stButton"] > button:hover,
+[data-testid="stDownloadButton"] > button:hover {
+    color: #FFFFFF !important;
+    background: #111 !important;
+}
+
+[data-testid="stButton"] > button:focus,
+[data-testid="stDownloadButton"] > button:focus {
+    outline: none !important;
+    box-shadow: none !important;
+}
+
+/* ════════════════════════════════════
+   FILE UPLOADER
+════════════════════════════════════ */
+[data-testid="stFileUploader"] {
+    background: transparent !important;
+}
+
+[data-testid="stFileUploader"] > div {
+    background: #0A0A0A !important;
+    border: 1px dashed #222 !important;
+    border-radius: 10px !important;
+    padding: 16px !important;
+    transition: border-color 0.2s !important;
+}
+
+[data-testid="stFileUploader"] > div:hover {
+    border-color: #E50914 !important;
+}
+
+[data-testid="stFileUploaderDropzoneInstructions"] {
+    color: #444 !important;
+    font-size: 12px !important;
+}
+
+[data-testid="stFileUploader"] button {
+    all: unset !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    padding: 7px 14px !important;
+    background: #161616 !important;
+    border: 1px solid #222 !important;
+    border-radius: 6px !important;
+    color: #888 !important;
+    font-size: 12px !important;
+    font-family: 'Inter', sans-serif !important;
+    cursor: pointer !important;
+    transition: all 0.15s !important;
+    margin-top: 8px !important;
+}
+[data-testid="stFileUploader"] button:hover {
+    color: #fff !important;
+    border-color: #444 !important;
+}
+
+/* ════════════════════════════════════
+   SELECTBOX
+════════════════════════════════════ */
+[data-testid="stSelectbox"] label { display: none !important; }
+
+[data-testid="stSelectbox"] > div > div {
+    background: #0A0A0A !important;
+    border: 1px solid #1E1E1E !important;
+    border-radius: 8px !important;
+    color: #CCC !important;
+    font-family: 'Inter', sans-serif !important;
+    font-size: 13px !important;
+    padding: 2px 4px !important;
+    transition: border-color 0.2s !important;
+}
+[data-testid="stSelectbox"] > div > div:hover {
+    border-color: #333 !important;
+}
+[data-testid="stSelectbox"] > div > div:focus-within {
+    border-color: #E50914 !important;
+    box-shadow: 0 0 0 3px rgba(229,9,20,0.08) !important;
+}
+
+/* Dropdown list */
+[data-testid="stSelectbox"] ul {
+    background: #0D0D0D !important;
+    border: 1px solid #1E1E1E !important;
+    border-radius: 8px !important;
+}
+[data-testid="stSelectbox"] li {
+    color: #AAA !important;
+    font-size: 13px !important;
+    font-family: 'Inter', sans-serif !important;
+}
+[data-testid="stSelectbox"] li:hover,
+[data-testid="stSelectbox"] li[aria-selected="true"] {
+    background: #161616 !important;
+    color: #FFF !important;
+}
+
+/* ════════════════════════════════════
+   DATAFRAME
+════════════════════════════════════ */
+[data-testid="stDataFrame"] > div {
+    border: 1px solid #161616 !important;
+    border-radius: 12px !important;
+    overflow: hidden !important;
+}
+.stDataFrame th {
+    background: #0A0A0A !important;
+    color: #555 !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.08em !important;
+    text-transform: uppercase !important;
+    border-bottom: 1px solid #1A1A1A !important;
+}
+.stDataFrame td {
+    color: #AAA !important;
+    font-size: 13px !important;
+    border-bottom: 1px solid #0F0F0F !important;
+}
+
+/* ════════════════════════════════════
+   ALERT / SUCCESS / ERROR
+════════════════════════════════════ */
+[data-testid="stAlert"] {
+    background: #0A0A0A !important;
+    border: 1px solid #1E1E1E !important;
+    border-radius: 8px !important;
+    color: #AAA !important;
+    font-size: 13px !important;
+}
+
+/* ════════════════════════════════════
+   SPINNER
+════════════════════════════════════ */
+[data-testid="stSpinner"] { color: #E50914 !important; }
+
+/* ════════════════════════════════════
+   SCROLLBAR
+════════════════════════════════════ */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: #000; }
+::-webkit-scrollbar-thumb { background: #222; border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: #E50914; }
+
+/* ════════════════════════════════════
+   UTILITY CLASSES (inline HTML)
+════════════════════════════════════ */
+
+/* Sidebar brand */
+.sb-brand {
+    padding: 28px 24px 20px;
+    border-bottom: 1px solid #0F0F0F;
+    margin-bottom: 4px;
+}
+.sb-brand-n {
+    font-size: 26px;
     font-weight: 900;
     color: #E50914;
+    letter-spacing: -1px;
+    font-style: italic;
     line-height: 1;
-    font-style: italic;
-    letter-spacing: -2px;
 }
-.netflix-subtitle {
-    font-size: 0.75rem;
-    color: #555;
-    letter-spacing: 1px;
-    margin-top: 2px;
-}
-
-/* ── Welcome card ── */
-.welcome-card {
-    background: #141414;
-    border: 1px solid #222222;
-    border-radius: 24px;
-    padding: 60px 70px;
-    text-align: center;
-    max-width: 640px;
-    margin: 60px auto;
-}
-.welcome-title {
-    font-size: 1.7rem;
-    font-weight: 800;
-    color: #FFFFFF;
-    margin-bottom: 10px;
-    letter-spacing: -0.5px;
-}
-.welcome-sub {
-    font-size: 1rem;
-    color: #94A3B8;
-    line-height: 1.7;
-}
-.welcome-divider {
-    height: 2px;
-    width: 200px;
-    background: #E50914;
-    border-radius: 2px;
-    margin: 24px auto;
-}
-.welcome-hint {
-    font-size: 0.9rem;
-    color: #555;
-    font-style: italic;
-}
-
-/* ── Stats text block ── */
-.stats-block {
-    background: #141414;
-    border: 1px solid #222222;
-    border-radius: 16px;
-    padding: 32px 36px;
-    font-family: 'Inter', monospace;
-    font-size: 0.95rem;
-    line-height: 2;
-    color: #E2E8F0;
-    white-space: pre-wrap;
-}
-
-/* ── Info strip ── */
-.info-strip {
-    background: #141414;
-    border: 1px solid #222222;
-    border-radius: 12px;
-    padding: 16px 22px;
-    color: #F1F5F9;
-    font-size: 0.9rem;
-}
-
-/* ── Upload area ── */
-[data-testid="stFileUploader"] {
-    background: #141414 !important;
-    border: 1px dashed #333 !important;
-    border-radius: 12px !important;
-}
-
-/* ── Selectbox / dropdown ── */
-[data-testid="stSelectbox"] > div > div {
-    background: #141414 !important;
-    border-color: #333 !important;
-    color: #FFF !important;
-    border-radius: 10px !important;
-}
-
-/* ── Buttons ── */
-[data-testid="stButton"] > button {
-    background: #141414;
-    color: #FFFFFF;
-    border: 1px solid #333;
-    border-radius: 10px;
-    font-family: 'Inter', sans-serif;
+.sb-brand-label {
+    font-size: 10px;
     font-weight: 600;
-    font-size: 0.9rem;
-    padding: 10px 20px;
-    width: 100%;
-    transition: all 0.2s ease;
+    color: #2A2A2A;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-top: 6px;
 }
-[data-testid="stButton"] > button:hover {
-    background: #222;
-    border-color: #E50914;
+
+/* Sidebar section heading */
+.sb-section {
+    font-size: 9px;
+    font-weight: 700;
+    color: #2A2A2A;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    padding: 20px 24px 8px;
+}
+
+/* Sidebar nav buttons (rendered via HTML, not st.button) */
+.sb-nav-btn {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 24px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #555;
+    cursor: pointer;
+    transition: all 0.15s;
+    border-left: 2px solid transparent;
+    text-decoration: none;
+}
+.sb-nav-btn:hover { color: #FFF; background: #0A0A0A; }
+.sb-nav-btn.active { color: #FFF; border-left-color: #E50914; background: #0A0A0A; }
+.sb-nav-icon { font-size: 14px; width: 18px; flex-shrink: 0; }
+
+/* Page header */
+.pg-header { padding: 40px 0 0; }
+.pg-eyebrow {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-transform: uppercase;
     color: #E50914;
+    margin-bottom: 10px;
+}
+.pg-title {
+    font-size: 38px;
+    font-weight: 800;
+    color: #FFF;
+    letter-spacing: -1.5px;
+    line-height: 1.1;
+}
+.pg-sub {
+    font-size: 14px;
+    color: #444;
+    margin-top: 8px;
+    font-weight: 400;
+}
+.pg-rule {
+    height: 1px;
+    background: #111;
+    border: none;
+    margin: 28px 0;
 }
 
-/* ── Download button ── */
-[data-testid="stDownloadButton"] > button {
-    background: #141414 !important;
-    color: #FFFFFF !important;
-    border: 1px solid #333 !important;
-    border-radius: 10px !important;
-    font-weight: 600 !important;
-    width: 100% !important;
-    transition: all 0.2s ease !important;
+/* Stat cards */
+.kpi-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-bottom: 12px; }
+.kpi-grid-3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; margin-bottom: 28px; }
+.kpi-card {
+    background: #080808;
+    border: 1px solid #111;
+    border-radius: 12px;
+    padding: 24px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.2s, transform 0.2s;
 }
-[data-testid="stDownloadButton"] > button:hover {
-    border-color: #16A34A !important;
-    color: #16A34A !important;
+.kpi-card:hover { border-color: #1E1E1E; transform: translateY(-1px); }
+.kpi-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: var(--accent);
+    opacity: 0.6;
+}
+.kpi-num {
+    font-size: 36px;
+    font-weight: 800;
+    color: #FFF;
+    letter-spacing: -1.5px;
+    line-height: 1;
+}
+.kpi-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: #333;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-top: 10px;
+}
+.kpi-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    display: inline-block;
+    margin-right: 6px;
+    vertical-align: middle;
 }
 
-/* ── Dataframe ── */
-[data-testid="stDataFrame"] {
-    border: 1px solid #222 !important;
-    border-radius: 12px !important;
+/* Chart wrapper */
+.chart-shell {
+    background: #050505;
+    border: 1px solid #111;
+    border-radius: 14px;
+    padding: 4px 4px 0;
     overflow: hidden;
 }
 
-/* ── Chart container ── */
-.chart-wrap {
-    background: #0F0F0F;
-    border: 1px solid #1a1a1a;
-    border-radius: 16px;
-    padding: 8px;
-    margin-top: 8px;
+/* Stats block */
+.stats-shell {
+    background: #080808;
+    border: 1px solid #111;
+    border-radius: 14px;
+    padding: 36px 40px;
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    line-height: 2.2;
+    color: #666;
+}
+.stats-shell strong { color: #FFF; font-weight: 600; }
+.stats-group-title {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: #E50914;
+    margin-top: 24px;
+    margin-bottom: 8px;
+    display: block;
 }
 
-/* ── Scrollbar ── */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: #0F0F0F; }
-::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #E50914; }
+/* Welcome */
+.welcome-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 72vh;
+}
+.welcome-card {
+    text-align: center;
+    max-width: 480px;
+    padding: 20px;
+}
+.welcome-n {
+    font-size: 72px;
+    font-weight: 900;
+    color: #E50914;
+    font-style: italic;
+    letter-spacing: -4px;
+    line-height: 1;
+}
+.welcome-title {
+    font-size: 22px;
+    font-weight: 700;
+    color: #FFF;
+    letter-spacing: -0.5px;
+    margin-top: 20px;
+}
+.welcome-sub {
+    font-size: 14px;
+    color: #333;
+    line-height: 1.7;
+    margin-top: 10px;
+}
+.welcome-hint {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 32px;
+    padding: 10px 18px;
+    background: #0A0A0A;
+    border: 1px solid #161616;
+    border-radius: 100px;
+    font-size: 12px;
+    color: #333;
+}
+
+/* Info bar */
+.info-bar {
+    background: #080808;
+    border: 1px solid #111;
+    border-radius: 10px;
+    padding: 14px 20px;
+    font-size: 13px;
+    color: #333;
+    margin-top: 24px;
+}
+
+/* Upload label */
+.upload-label {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: #2A2A2A;
+    padding: 0 24px;
+    margin-bottom: 8px;
+    display: block;
+}
+
+/* Status pill */
+.status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    background: rgba(22,163,74,0.08);
+    border: 1px solid rgba(22,163,74,0.15);
+    border-radius: 100px;
+    font-size: 11px;
+    font-weight: 500;
+    color: #16A34A;
+    margin: 8px 24px 0;
+}
+
+/* Footer */
+.sb-footer {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    padding: 16px 24px;
+    border-top: 1px solid #0A0A0A;
+    font-size: 10px;
+    color: #1A1A1A;
+    letter-spacing: 1px;
+}
 </style>
 """, unsafe_allow_html=True)
 
 
-# ─── Session state init ──────────────────────────────────────────────────────
-if "clean_df" not in st.session_state:
-    st.session_state.clean_df   = None
-    st.session_state.analyzer   = None
-    st.session_state.visualizer = None
-    st.session_state.page       = "dashboard"
+# ─── Session state ────────────────────────────────────────────────────────────
+for key, default in {
+    "clean_df":   None,
+    "analyzer":   None,
+    "visualizer": None,
+    "page":       "dashboard",
+    "loaded":     False,
+}.items():
+    if key not in st.session_state:
+        st.session_state[key] = default
 
 
-# ─── Sidebar ────────────────────────────────────────────────────────────────
+# ─── Sidebar ──────────────────────────────────────────────────────────────────
 with st.sidebar:
+
+    # Brand
     st.markdown("""
-    <div class="netflix-header">
-        <div class="netflix-n">N</div>
-        <div class="netflix-subtitle">NETFLIX ANALYZER</div>
+    <div class="sb-brand">
+        <div class="sb-brand-n">N</div>
+        <div class="sb-brand-label">Netflix Analytics</div>
     </div>
     """, unsafe_allow_html=True)
 
-    # ── Data section
-    st.markdown('<div class="section-label">Data</div>', unsafe_allow_html=True)
+    # Upload
+    st.markdown('<span class="upload-label">Dataset</span>', unsafe_allow_html=True)
     uploaded = st.file_uploader(
-        "Upload CSV",
+        "upload",
         type=["csv"],
         label_visibility="collapsed",
-        help="Upload your netflix_titles.csv file"
     )
 
-    if uploaded is not None and st.session_state.clean_df is None:
-        with st.spinner("Processing dataset…"):
+    if uploaded and not st.session_state.loaded:
+        with st.spinner("Processing…"):
             try:
                 df_raw = pd.read_csv(uploaded)
-                preprocessor = Preprocessor(df_raw)
-                clean = preprocessor.process()
+                pre    = Preprocessor(df_raw)
+                clean  = pre.process()
                 st.session_state.clean_df   = clean
                 st.session_state.analyzer   = Analyzer(clean)
                 st.session_state.visualizer = Visualizer(clean, st.session_state.analyzer)
-                st.success(f"✅  {len(clean):,} titles loaded")
+                st.session_state.loaded     = True
             except Exception as e:
-                st.error(f"Failed to load: {e}")
+                st.error(str(e))
 
-    # ── Visualize section
-    st.markdown('<div class="section-label">Visualize</div>', unsafe_allow_html=True)
+    if st.session_state.loaded:
+        n = len(st.session_state.clean_df)
+        st.markdown(f"""
+        <div class="status-pill">
+            <span style="width:5px;height:5px;border-radius:50%;background:#16A34A;display:inline-block;"></span>
+            {n:,} titles loaded
+        </div>
+        """, unsafe_allow_html=True)
 
-    CHART_OPTIONS = {
-        "🥧  Content Type Pie":       "pie",
-        "🌍  Top Countries":           "countries",
-        "📈  Yearly Trend":            "trend",
-        "⭐  Ratings":                 "ratings",
-        "🎬  Top Genres":              "genres",
-        "📅  Release Year Histogram":  "histogram",
-        "🔥  Country × Genre Heatmap": "heatmap",
-    }
+    # Navigation
+    st.markdown('<div class="sb-section">Navigate</div>', unsafe_allow_html=True)
 
-    chart_label = st.selectbox(
-        "Chart type",
-        list(CHART_OPTIONS.keys()),
-        label_visibility="collapsed",
-        disabled=st.session_state.clean_df is None,
-    )
+    disabled = not st.session_state.loaded
 
-    if st.button(
-        "▶  Show Chart",
-        disabled=st.session_state.clean_df is None,
-        key="btn_chart"
-    ):
-        st.session_state.page = f"chart:{CHART_OPTIONS[chart_label]}:{chart_label}"
-
-    # ── Tools section
-    st.markdown('<div class="section-label">Tools</div>', unsafe_allow_html=True)
-
-    if st.button("📊  Statistics", disabled=st.session_state.clean_df is None, key="btn_stats"):
+    if st.button("⬚  Dashboard",  disabled=disabled, key="nav_dash"):
+        st.session_state.page = "dashboard"
+    if st.button("◈  Charts",     disabled=disabled, key="nav_charts"):
+        st.session_state.page = "charts"
+    if st.button("≡  Statistics", disabled=disabled, key="nav_stats"):
         st.session_state.page = "statistics"
-
-    if st.button("🗃   Raw Data",   disabled=st.session_state.clean_df is None, key="btn_raw"):
+    if st.button("⊞  Raw Data",   disabled=disabled, key="nav_raw"):
         st.session_state.page = "raw"
 
-    if st.button("🏠  Dashboard",   disabled=st.session_state.clean_df is None, key="btn_dash"):
-        st.session_state.page = "dashboard"
-
-    # ── Download CSV
-    if st.session_state.clean_df is not None:
-        st.markdown('<div class="section-label">Export</div>', unsafe_allow_html=True)
-        csv_bytes = st.session_state.clean_df.to_csv(index=False, encoding="utf-8").encode("utf-8")
+    # Export
+    if st.session_state.loaded:
+        st.markdown('<div class="sb-section">Export</div>', unsafe_allow_html=True)
+        csv_bytes = st.session_state.clean_df.to_csv(index=False).encode("utf-8")
         st.download_button(
-            label="💾  Download Cleaned CSV",
+            "↓  Download CSV",
             data=csv_bytes,
             file_name="netflix_cleaned.csv",
             mime="text/csv",
-            key="btn_export"
+            key="dl_csv"
         )
 
-    st.markdown(
-        '<div style="position:absolute;bottom:16px;left:0;right:0;text-align:center;'
-        'font-size:0.7rem;color:#2a2a2a;">PFAI Semester Project</div>',
-        unsafe_allow_html=True
-    )
+    st.markdown('<div class="sb-footer">PFAI · 2025</div>', unsafe_allow_html=True)
 
 
-# ─── Main content ───────────────────────────────────────────────────────────
+# ─── Helpers ──────────────────────────────────────────────────────────────────
+def page_header(eyebrow, title, sub=""):
+    st.markdown(f"""
+    <div class="pg-header">
+        <div class="pg-eyebrow">{eyebrow}</div>
+        <div class="pg-title">{title}</div>
+        {"" if not sub else f'<div class="pg-sub">{sub}</div>'}
+    </div>
+    <hr class="pg-rule">
+    """, unsafe_allow_html=True)
+
+
+def kpi(num, label, accent):
+    return f"""
+    <div class="kpi-card" style="--accent:{accent}">
+        <div class="kpi-num">{num}</div>
+        <div class="kpi-label"><span class="kpi-dot" style="--accent:{accent}"></span>{label}</div>
+    </div>"""
+
+
+# ─── Pages ───────────────────────────────────────────────────────────────────
 page = st.session_state.page
 
-# ══════════════════════════ WELCOME / DASHBOARD ══════════════════════════════
-if page == "dashboard" and st.session_state.clean_df is None:
+# ════════════════════════ WELCOME ════════════════════════
+if not st.session_state.loaded:
     st.markdown("""
-    <div class="welcome-card">
-        <div style="font-size:5rem;font-weight:900;color:#E50914;font-style:italic;letter-spacing:-4px;line-height:1;">N</div>
-        <div style="height:2px;width:60px;background:#E50914;border-radius:2px;margin:16px auto;"></div>
-        <div class="welcome-title">Netflix Data Analyzer</div>
-        <div class="welcome-sub">
-            Upload your <code style="color:#E50914;background:#1a1a1a;padding:2px 6px;border-radius:4px;">netflix_titles.csv</code>
-            to explore insights,<br>trends, and beautiful visualisations.
+    <div class="welcome-wrap">
+        <div class="welcome-card">
+            <div class="welcome-n">N</div>
+            <div class="welcome-title">Netflix Analytics</div>
+            <div class="welcome-sub">
+                Upload <code style="color:#E50914;background:#0A0A0A;padding:2px 7px;border-radius:4px;font-size:12px;">netflix_titles.csv</code>
+                in the sidebar to start exploring trends, charts and insights from the Netflix catalogue.
+            </div>
+            <div class="welcome-hint">
+                ← Upload your dataset to begin
+            </div>
         </div>
-        <div class="welcome-divider"></div>
-        <div class="welcome-hint">← Use the sidebar to load your dataset</div>
     </div>
     """, unsafe_allow_html=True)
 
-elif page == "dashboard" and st.session_state.clean_df is not None:
-    # ── Title
-    st.markdown('<div class="page-title">Dashboard</div>', unsafe_allow_html=True)
-    st.markdown('<div class="page-subtitle">Overview of your Netflix dataset</div>', unsafe_allow_html=True)
-    st.markdown('<hr class="title-divider">', unsafe_allow_html=True)
-
-    df    = st.session_state.clean_df
-    total = len(df)
+# ════════════════════════ DASHBOARD ════════════════════════
+elif page == "dashboard":
+    df     = st.session_state.clean_df
     counts = df["type"].value_counts()
+    total  = len(df)
     movies = int(counts.get("Movie", 0))
     shows  = int(counts.get("TV Show", 0))
     genres = int(df["primary_genre"].nunique())
@@ -399,53 +628,54 @@ elif page == "dashboard" and st.session_state.clean_df is not None:
     yr_min = int(df["release_year"].min())
     yr_max = int(df["release_year"].max())
 
-    # ── Stat cards
-    st.markdown('<div class="section-label">Overview</div>', unsafe_allow_html=True)
-    c1, c2, c3, c4 = st.columns(4)
+    page_header("Overview", "Dashboard", f"{total:,} titles · {yr_min}–{yr_max}")
 
-    def stat_card(col, label, value, color):
-        col.markdown(f"""
-        <div class="stat-card">
-            <div class="stat-accent" style="background:{color};"></div>
-            <div>
-                <div class="stat-value">{value:,}</div>
-                <div class="stat-label">{label}</div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+    row1 = kpi(f"{total:,}", "Total Titles",  "#E50914") \
+         + kpi(f"{movies:,}", "Movies",        "#3B82F6") \
+         + kpi(f"{shows:,}",  "TV Shows",      "#8B5CF6") \
+         + kpi(f"{genres:,}", "Unique Genres", "#10B981")
 
-    stat_card(c1, "Total Titles",  total,   "#E50914")
-    stat_card(c2, "Movies",        movies,  "#2563EB")
-    stat_card(c3, "TV Shows",      shows,   "#7C3AED")
-    stat_card(c4, "Unique Genres", genres,  "#16A34A")
+    st.markdown(f'<div class="kpi-grid">{row1}</div>', unsafe_allow_html=True)
 
-    st.markdown("<br>", unsafe_allow_html=True)
+    row2 = kpi(f"{countries:,}", "Countries",     "#F59E0B") \
+         + kpi(str(yr_min),       "Earliest Year", "#06B6D4") \
+         + kpi(str(yr_max),       "Latest Year",   "#EC4899")
 
-    # ── Secondary cards
-    c5, c6, c7 = st.columns(3)
-    stat_card(c5, "Countries",    countries, "#F59E0B")
-    stat_card(c6, "Earliest Year", yr_min,   "#06B6D4")
-    stat_card(c7, "Latest Year",   yr_max,   "#EC4899")
+    st.markdown(f'<div class="kpi-grid-3">{row2}</div>', unsafe_allow_html=True)
 
-    st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("""
-    <div class="info-strip">
-        ✨ &nbsp; Use the <strong>left-hand sidebar</strong> to explore interactive charts, statistics, and raw data.
+    <div class="info-bar">
+        Use the sidebar to explore charts, statistics, and the raw dataset.
     </div>
     """, unsafe_allow_html=True)
 
 
-# ══════════════════════════════ CHARTS ═══════════════════════════════════════
-elif page.startswith("chart:"):
-    _, chart_key, chart_label_display = page.split(":", 2)
+# ════════════════════════ CHARTS ════════════════════════
+elif page == "charts":
+    page_header("Visualise", "Charts")
 
-    title = chart_label_display.split("  ", 1)[-1]
-    st.markdown(f'<div class="page-title">{title}</div>', unsafe_allow_html=True)
-    st.markdown('<hr class="title-divider">', unsafe_allow_html=True)
+    CHARTS = {
+        "Content Type Split":        ("pie",       "Movies vs TV Shows — proportional breakdown"),
+        "Top Countries":             ("countries", "Top 10 countries by number of titles"),
+        "Content Added Over Time":   ("trend",     "Yearly upload trend for movies and shows"),
+        "Rating Distribution":       ("ratings",   "How titles are distributed across rating categories"),
+        "Top Genres":                ("genres",    "Most common primary genres in the catalogue"),
+        "Release Year Spread":       ("histogram", "Histogram of original release years"),
+        "Country × Genre Heatmap":   ("heatmap",   "Cross-tabulation of top countries vs genres"),
+    }
+
+    col_sel, col_btn = st.columns([5, 1])
+    with col_sel:
+        selected_label = st.selectbox("chart", list(CHARTS.keys()), label_visibility="collapsed")
+    with col_btn:
+        show = st.button("Show →", key="show_chart")
+
+    chart_key, chart_desc = CHARTS[selected_label]
+
+    st.markdown(f'<div class="pg-sub" style="margin-bottom:16px;">{chart_desc}</div>', unsafe_allow_html=True)
 
     viz = st.session_state.visualizer
-
-    chart_fn_map = {
+    fn_map = {
         "pie":       viz.plot_content_type_pie,
         "countries": viz.plot_top_countries_bar,
         "trend":     viz.plot_yearly_trend_line,
@@ -456,72 +686,86 @@ elif page.startswith("chart:"):
     }
 
     try:
-        fig = chart_fn_map[chart_key]()
-        st.markdown('<div class="chart-wrap">', unsafe_allow_html=True)
+        fig = fn_map[chart_key]()
+        st.markdown('<div class="chart-shell">', unsafe_allow_html=True)
         st.pyplot(fig, use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
     except Exception as e:
         st.error(f"Could not render chart: {e}")
 
 
-# ══════════════════════════════ STATISTICS ═══════════════════════════════════
+# ════════════════════════ STATISTICS ════════════════════════
 elif page == "statistics":
-    st.markdown('<div class="page-title">Statistics</div>', unsafe_allow_html=True)
-    st.markdown('<div class="page-subtitle">Summary metrics from your dataset</div>', unsafe_allow_html=True)
-    st.markdown('<hr class="title-divider">', unsafe_allow_html=True)
+    page_header("Insights", "Statistics", "Key metrics extracted from the dataset")
 
-    analyzer = st.session_state.analyzer
+    az = st.session_state.analyzer
 
     try:
-        top5_countries = "\n".join(
-            f"  {c}: {v:,}" for c, v in analyzer.get_top_countries(5).items()
+        basic    = az.get_basic_stats()
+        duration = az.get_duration_stats()
+        top_c    = az.get_top_countries(5)
+        top_g    = az.get_genre_counts(5)
+
+        def fmt_block(raw_text):
+            lines = raw_text.strip().splitlines()
+            out = []
+            for line in lines:
+                if line.startswith("---"):
+                    continue
+                if ":" in line:
+                    k, v = line.split(":", 1)
+                    out.append(f"<strong>{k.strip()}:</strong>{v}")
+                else:
+                    out.append(line)
+            return "<br>".join(out)
+
+        countries_html = "<br>".join(
+            f"<strong>{c}:</strong> {v:,}" for c, v in top_c.items()
         )
-        top5_genres = "\n".join(
-            f"  {g}: {v:,}" for g, v in analyzer.get_genre_counts(5).items()
+        genres_html = "<br>".join(
+            f"<strong>{g}:</strong> {v:,}" for g, v in top_g.items()
         )
 
-        full_text = (
-            analyzer.get_basic_stats()
-            + "\n"
-            + analyzer.get_duration_stats()
-            + "\n--- Top 5 Countries ---\n"
-            + top5_countries
-            + "\n\n--- Top 5 Genres ---\n"
-            + top5_genres
-        )
-
-        st.markdown(f'<div class="stats-block">{full_text}</div>', unsafe_allow_html=True)
+        st.markdown(f"""
+        <div class="stats-shell">
+            <span class="stats-group-title">General</span>
+            {fmt_block(basic)}
+            <span class="stats-group-title">Movie Durations</span>
+            {fmt_block(duration)}
+            <span class="stats-group-title">Top 5 Countries</span>
+            {countries_html}
+            <span class="stats-group-title">Top 5 Genres</span>
+            {genres_html}
+        </div>
+        """, unsafe_allow_html=True)
 
     except Exception as e:
-        st.error(f"Could not display statistics: {e}")
+        st.error(str(e))
 
 
-# ══════════════════════════════ RAW DATA ════════════════════════════════════
+# ════════════════════════ RAW DATA ════════════════════════
 elif page == "raw":
-    st.markdown('<div class="page-title">Raw Data</div>', unsafe_allow_html=True)
-    st.markdown('<div class="page-subtitle">First 200 rows of the cleaned dataset</div>', unsafe_allow_html=True)
-    st.markdown('<hr class="title-divider">', unsafe_allow_html=True)
+    page_header("Explore", "Raw Data", "First 200 rows of the cleaned dataset")
 
     cols = ["type", "title", "director", "country",
             "release_year", "rating", "primary_genre", "year_added"]
 
     try:
-        display_df = st.session_state.clean_df[cols].head(200)
         st.dataframe(
-            display_df,
+            st.session_state.clean_df[cols].head(200),
             use_container_width=True,
-            height=560,
+            height=580,
             column_config={
-                "type":         st.column_config.TextColumn("Type"),
-                "title":        st.column_config.TextColumn("Title"),
-                "director":     st.column_config.TextColumn("Director"),
-                "country":      st.column_config.TextColumn("Country"),
-                "release_year": st.column_config.NumberColumn("Release Year", format="%d"),
-                "rating":       st.column_config.TextColumn("Rating"),
-                "primary_genre":st.column_config.TextColumn("Genre"),
-                "year_added":   st.column_config.NumberColumn("Year Added", format="%d"),
+                "type":          st.column_config.TextColumn("Type"),
+                "title":         st.column_config.TextColumn("Title"),
+                "director":      st.column_config.TextColumn("Director"),
+                "country":       st.column_config.TextColumn("Country"),
+                "release_year":  st.column_config.NumberColumn("Year", format="%d"),
+                "rating":        st.column_config.TextColumn("Rating"),
+                "primary_genre": st.column_config.TextColumn("Genre"),
+                "year_added":    st.column_config.NumberColumn("Added", format="%d"),
             },
             hide_index=True,
         )
     except Exception as e:
-        st.error(f"Could not display data: {e}")
+        st.error(str(e))
