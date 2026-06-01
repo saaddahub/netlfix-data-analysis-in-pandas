@@ -460,7 +460,7 @@ class NetflixAnalyzer:
 
     # ── Series getters ────────────────────────────────────
     def type_counts(self):
-        return self._df["type"].value_counts().reset_index(names=["type", "count"])
+        return self._df["type"].value_counts().rename_axis("type").reset_index(name="count")
 
     def yearly_trend(self):
         return (
@@ -486,7 +486,7 @@ class NetflixAnalyzer:
             self._df[self._df["country"] != "Unknown"]["country"]
                 .str.split(",").explode().str.strip()
                 .value_counts().head(n)
-                .reset_index(names=["country", "count"])
+                .rename_axis("country").reset_index(name="count")
         )
         return series
 
@@ -505,7 +505,7 @@ class NetflixAnalyzer:
     def top_genres(self, n=12):
         return (
             self._df["primary_genre"].value_counts().head(n)
-                .reset_index(names=["genre", "count"])
+                .rename_axis("genre").reset_index(name="count")
         )
 
     def genre_type(self, n=10):
@@ -517,7 +517,7 @@ class NetflixAnalyzer:
         )
 
     def rating_counts(self):
-        return self._df["rating"].value_counts().reset_index(names=["rating", "count"])
+        return self._df["rating"].value_counts().rename_axis("rating").reset_index(name="count")
 
     def release_year_dist(self):
         return self._df["release_year"].dropna().astype(int)
