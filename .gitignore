@@ -1,34 +1,29 @@
 # Python
 __pycache__/
-*.py[cod]
+*.pyc
 *.pyo
 *.pyd
 .Python
 *.egg-info/
 dist/
 build/
-*.egg
 
-# Virtual environments
-venv/
+# Environments
+.env
+.venv
 env/
-.env/
-.venv/
+venv/
+
+# Data (large files — user uploads via the app)
+data/netflix_dataset.csv
+
+# Assets (fonts zip/extracted — not needed on server)
+assets/inter_extracted/
 
 # IDE
 .vscode/
 .idea/
-*.iml
 
 # OS
 .DS_Store
 Thumbs.db
-
-# Jupyter
-.ipynb_checkpoints/
-
-# Large font asset folder (Inter font files)
-assets/inter_extracted/
-
-# Data files (large CSVs - optional, comment out if you want to include them)
-# *.csv
