@@ -1,7 +1,9 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
+import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import os
 
 # ==============================================================================
@@ -637,13 +639,13 @@ class NetflixAnalyzer:
             return int(valid.min()), int(valid.max())
         return 1925, 2026
 
-    def get_type_split(self) -> pd.DataFrame:
-        return self._df['type'].value_counts().rename_axis('type').reset_index(name='count')
+    def type_counts(self):
+        return self._df["type"].value_counts().rename_axis("type").reset_index(name="count")
 
     def get_top_ratings(self, limit=10) -> pd.DataFrame:
         return self._df['rating'].value_counts().head(limit).rename_axis('rating').reset_index(name='count')
 
-    def get_yearly_trend(self) -> pd.DataFrame:
+    def yearly_trend(self):
         trend = self._df.groupby(['year_added', 'type']).size().reset_index(name='count')
         return trend.dropna().astype({'year_added': int})
 
@@ -662,6 +664,38 @@ class NetflixAnalyzer:
         non_empty = self._df['country'][self._df['country'] != 'Unknown']
         countries = non_empty.str.split(',').explode().str.strip()
         return countries.value_counts().head(limit).rename_axis('country').reset_index(name='count')
+
+    def country_type_split(self, n=10):
+        df = self._df[self._df["country"] != "Unknown"].copy()
+        df["country"] = df["country"].str.split(",").str[0].str.strip()
+        return (
+            df.groupby(["country", "type"])
+              .size()
+              .reset_index(name="count")
+              .pipe(lambda d: d[d["country"].isin(
+                  d.groupby("country")["count"].sum().nlargest(n).index
+              )])
+        )
+
+    def genre_type(self, n=10):
+        top = self._df["primary_genre"].value_counts().head(n).index
+        df  = self._df[self._df["primary_genre"].isin(top)]
+        return (
+            df.groupby(["primary_genre", "type"])
+              .size().reset_index(name="count")
+        )
+
+    def genre_heatmap_data(self, n_c=8, n_g=8):
+        top_c = (
+            self._df[self._df["country"] != "Unknown"]["country"]
+                .str.split(",").str[0].str.strip()
+                .value_counts().head(n_c).index
+        )
+        top_g = self._df["primary_genre"].value_counts().head(n_g).index
+        df = self._df.copy()
+        df["country_first"] = df["country"].str.split(",").str[0].str.strip()
+        sub = df[df["country_first"].isin(top_c) & df["primary_genre"].isin(top_g)]
+        return pd.crosstab(sub["country_first"], sub["primary_genre"])
 
     def get_filtered_results(self, type_f, rating_f, country_f, year_f, query) -> pd.DataFrame:
         """
@@ -682,186 +716,214 @@ class NetflixAnalyzer:
                     df['director'].str.contains(query, case=False, na=False)]
         return df
 
+    def rating_counts(self):
+        return self._df["rating"].value_counts().rename_axis("rating").reset_index(name="count")
+
+    def release_year_dist(self):
+        return self._df["release_year"].dropna().astype(int)
+
+    def monthly_trend(self, type_filter="All"):
+        df = self._df if type_filter == "All" else self._df[self._df["type"] == type_filter]
+        out = (
+            df.groupby(["year_added", "month_added"])
+              .size()
+              .reset_index(name="count")
+              .dropna()
+              .astype({"year_added": int, "month_added": int})
+        )
+        return out
+
 # ==============================================================================
-#  5. OOP: VISUALIZER CLASS (Matplotlib Dark Theme Rendering)
+#  5. OOP: VISUALIZER CLASS (Reverted Plotly Backend Rendering)
 # ==============================================================================
 class NetflixVisualizer:
     """
-    Standard university-level OOP class responsible for creating all Matplotlib charts.
+    Standard university-level OOP class responsible for creating all Plotly charts.
     All charts adhere strictly to the 'NOIR INTELLIGENCE' theme.
     """
-    def __init__(self):
-        """
-        Constructor. Configures plt rcParams to achieve premium Apple/Bloomberg dark aesthetics.
-        """
-        plt.style.use('dark_background')
-        plt.rcParams.update({
-            "figure.facecolor": "#0D0D12",
-            "axes.facecolor": "#0D0D12",
-            "axes.edgecolor": "#1E1E2E",
-            "text.color": "#F5F5F7",
-            "axes.labelcolor": "#6B6B7B",
-            "xtick.color": "#6B6B7B",
-            "ytick.color": "#6B6B7B",
-            "axes.prop_cycle": plt.cycler(color=["#E50914", "#4CC9F0", "#FFD60A", "#8B0000", "#F72585"]),
-            "font.family": "sans-serif"
-        })
+    PALETTE  = ["#E50914", "#3B82F6", "#10B981", "#F59E0B", "#8B5CF6",
+                 "#EC4899", "#06B6D4", "#F97316", "#84CC16", "#A78BFA"]
+    RED_SEQ  = ["#4A0000", "#7A0000", "#B00000", "#D80000", "#E50914",
+                 "#FF3333", "#FF6666", "#FF9999"]
+    LAYOUT   = dict(
+        paper_bgcolor="#13131A",
+        plot_bgcolor ="#13131A",
+        font         =dict(family="Clash Display, sans-serif", color="#B3B3B3", size=12),
+        title_font   =dict(family="Clash Display, sans-serif", color="#FFFFFF", size=15, weight=700),
+        margin       =dict(l=16, r=16, t=48, b=16),
+        xaxis        =dict(gridcolor="#1f1f1f", linecolor="#222", tickcolor="#222",
+                           tickfont=dict(size=11)),
+        yaxis        =dict(gridcolor="#1f1f1f", linecolor="#222", tickcolor="#222",
+                           tickfont=dict(size=11)),
+        hoverlabel   =dict(bgcolor="#050508", bordercolor="#222",
+                           font=dict(family="Clash Display", color="#FFF", size=12)),
+        legend       =dict(bgcolor="rgba(0,0,0,0)", bordercolor="#222",
+                           font=dict(color="#B3B3B3", size=11)),
+    )
 
-    def plot_pie_chart(self, df_counts):
-        """
-        1. Donut Pie Chart: Movie vs TV Show split.
-        """
-        fig, ax = plt.subplots(figsize=(6, 5.5), facecolor='#0D0D12')
-        fig.patch.set_facecolor('#0D0D12')
-        ax.set_facecolor('#0D0D12')
-        
-        labels = df_counts['type'].tolist()
-        sizes = df_counts['count'].tolist()
-        colors = ['#E50914', '#4CC9F0']
-        
-        wedges, texts, autotexts = ax.pie(
-            sizes, labels=labels, autopct='%1.1f%%',
-            startangle=140, colors=colors,
-            wedgeprops=dict(width=0.4, edgecolor='#13131A', linewidth=3),
-            pctdistance=0.75
+    def _apply(self, fig, title="", height=380):
+        fig.update_layout(**self.LAYOUT, title=title, height=height)
+        return fig
+
+    # Donut – content type
+    def content_donut(self, df_counts):
+        fig = px.pie(
+            df_counts, names="type", values="count",
+            hole=0.65,
+            color_discrete_sequence=["#E50914", "#4CC9F0"],
         )
-        
-        for text in texts:
-            text.set_color('#F5F5F7')
-            text.set_fontsize(12)
-        for autotext in autotexts:
-            autotext.set_color('#F5F5F7')
-            autotext.set_fontsize(11)
-            autotext.set_weight('bold')
-            
-        ax.set_title("CONTENT TYPE DISTRIBUTION", fontsize=15, fontweight='bold', pad=20, color='#FFFFFF')
-        ax.axis('equal')
-        plt.tight_layout()
-        return fig
-
-    def plot_bar_chart(self, df_bar):
-        """
-        2. Horizontal Bar Chart: Top 10 Ratings or Genres with gradient coloring.
-        """
-        fig, ax = plt.subplots(figsize=(10, 5.5), facecolor='#0D0D12')
-        fig.patch.set_facecolor('#0D0D12')
-        ax.set_facecolor('#0D0D12')
-        
-        df_sorted = df_bar.sort_values(by='count', ascending=True)
-        categories = df_sorted.iloc[:, 0].tolist()
-        counts = df_sorted.iloc[:, 1].tolist()
-        
-        # Apple-Harmonic red gradient spectrum
-        colors = ["#3a0305", "#5c0508", "#7e060a", "#a0080d", "#c20a0f", "#e40b12", "#e52129", "#e8474d", "#eb6d72", "#E50914"]
-        if len(categories) < 10:
-            colors = colors[-len(categories):]
-            
-        bars = ax.barh(categories, counts, color=colors, height=0.6, edgecolor='none')
-        
-        # Remove borders & spines completely
-        for spine in ax.spines.values():
-            spine.set_visible(False)
-            
-        # Draw metric labels directly on bar limits
-        for bar in bars:
-            width = bar.get_width()
-            ax.text(
-                width + (max(counts) * 0.015),
-                bar.get_y() + bar.get_height()/2,
-                f'{int(width):,}',
-                va='center', ha='left',
-                color='#F5F5F7', fontsize=10,
-                fontfamily='monospace', weight='bold'
-            )
-            
-        ax.set_title("TOP 10 GENRES", fontsize=15, fontweight='bold', pad=20, color='#FFFFFF')
-        ax.grid(axis='x', linestyle='--', alpha=0.1, color='#6B6B7B')
-        plt.tight_layout()
-        return fig
-
-    def plot_line_chart(self, df_trend):
-        """
-        3. Area Line Chart: Content added per year.
-        """
-        fig, ax = plt.subplots(figsize=(10, 5.5), facecolor='#0D0D12')
-        fig.patch.set_facecolor('#0D0D12')
-        ax.set_facecolor('#0D0D12')
-        
-        pivoted = df_trend.pivot(index='year_added', columns='type', values='count').fillna(0)
-        # Focus on modern growth era (2008 onwards)
-        pivoted = pivoted[pivoted.index >= 2008]
-        
-        if 'Movie' in pivoted.columns:
-            ax.plot(pivoted.index, pivoted['Movie'], color='#E50914', label='Movies', linewidth=3, marker='o', markersize=4)
-            ax.fill_between(pivoted.index, pivoted['Movie'], color='#E50914', alpha=0.12)
-        if 'TV Show' in pivoted.columns:
-            ax.plot(pivoted.index, pivoted['TV Show'], color='#4CC9F0', label='TV Shows', linewidth=3, marker='o', markersize=4)
-            ax.fill_between(pivoted.index, pivoted['TV Show'], color='#4CC9F0', alpha=0.12)
-            
-        for spine in ax.spines.values():
-            spine.set_visible(False)
-            
-        ax.set_title("ADDITION DENSITY TREND OVER TIME", fontsize=15, fontweight='bold', pad=20, color='#FFFFFF')
-        ax.grid(axis='y', linestyle='--', alpha=0.1, color='#6B6B7B')
-        ax.legend(frameon=False, loc='upper left', fontsize=11)
-        ax.set_xlabel("CALENDAR YEAR ADDED", fontsize=11, color='#6B6B7B', labelpad=10)
-        ax.set_ylabel("TITLES QUANTITY", fontsize=11, color='#6B6B7B', labelpad=10)
-        
-        plt.xticks(pivoted.index, rotation=45)
-        plt.tight_layout()
-        return fig
-
-    def plot_histogram(self, series_duration):
-        """
-        4. Histogram: Distribution of movie durations.
-        """
-        fig, ax = plt.subplots(figsize=(10, 5.5), facecolor='#0D0D12')
-        fig.patch.set_facecolor('#0D0D12')
-        ax.set_facecolor('#0D0D12')
-        
-        durations = series_duration.dropna().tolist()
-        
-        n, bins, patches = ax.hist(
-            durations, bins=30, color='#E50914', alpha=0.85, 
-            edgecolor='#0D0D12', linewidth=1.5, rwidth=0.85
+        fig.update_traces(
+            textposition="outside",
+            textfont=dict(color="#B3B3B3", size=12),
+            marker=dict(line=dict(color="#13131A", width=3)),
         )
-        
-        for spine in ax.spines.values():
-            spine.set_visible(False)
-            
-        ax.set_title("MOVIE DURATIONAL RANGE SPREAD (MINUTES)", fontsize=15, fontweight='bold', pad=20, color='#FFFFFF')
-        ax.grid(axis='y', linestyle='--', alpha=0.1, color='#6B6B7B')
-        ax.set_xlabel("RUN TIME (MINUTES)", fontsize=11, color='#6B6B7B', labelpad=10)
-        ax.set_ylabel("FREQUENCY / COUNT", fontsize=11, color='#6B6B7B', labelpad=10)
-        
-        plt.tight_layout()
-        return fig
+        fig.add_annotation(
+            text=f"<b>{df_counts['count'].sum():,}</b><br><span style='font-size:11px;color:#6B6B7B'>Titles</span>",
+            x=0.5, y=0.5, showarrow=False,
+            font=dict(color="#FFF", size=18, family="Clash Display"),
+            align="center",
+        )
+        return self._apply(fig, "CONTENT SPLIT", 340)
 
-    def plot_scatter_plot(self, df_scatter):
-        """
-        5. Scatter Plot: Release year vs. parsed numeric duration (colored by type).
-        """
-        fig, ax = plt.subplots(figsize=(10, 5.5), facecolor='#0D0D12')
-        fig.patch.set_facecolor('#0D0D12')
-        ax.set_facecolor('#0D0D12')
-        
-        movies = df_scatter[df_scatter['type'] == 'Movie']
-        shows = df_scatter[df_scatter['type'] == 'TV Show']
-        
-        ax.scatter(movies['release_year'], movies['duration_num'], color='#E50914', alpha=0.45, label='Movies (Mins)', s=25, edgecolors='none')
-        ax.scatter(shows['release_year'], shows['duration_num'], color='#4CC9F0', alpha=0.45, label='TV Shows (Seasons)', s=25, edgecolors='none')
-        
-        for spine in ax.spines.values():
-            spine.set_visible(False)
-            
-        ax.set_title("TEMPORAL EVOLUTION vs CONTENT DURATION", fontsize=15, fontweight='bold', pad=20, color='#FFFFFF')
-        ax.grid(axis='both', linestyle='--', alpha=0.1, color='#6B6B7B')
-        ax.legend(frameon=False, loc='upper left', fontsize=11)
-        ax.set_xlabel("HISTORIC RELEASE YEAR", fontsize=11, color='#6B6B7B', labelpad=10)
-        ax.set_ylabel("DURATION QUANTIFIER", fontsize=11, color='#6B6B7B', labelpad=10)
-        
-        plt.tight_layout()
-        return fig
+    # Bar – ratings
+    def ratings_bar(self, df_r):
+        fig = px.bar(
+            df_r.sort_values("count"), x="count", y="rating",
+            orientation="h",
+            color="count",
+            color_continuous_scale=self.RED_SEQ,
+        )
+        fig.update_traces(marker_line_width=0)
+        fig.update_layout(coloraxis_showscale=False)
+        return self._apply(fig, "RATING DISTRIBUTION", 360)
+
+    # Area – yearly trend
+    def yearly_trend_area(self, df_trend):
+        colors     = {"Movie": "#E50914",              "TV Show": "#4CC9F0"}
+        fillcolors = {"Movie": "rgba(229,9,20,0.08)",  "TV Show": "rgba(76,201,240,0.08)"}
+        fig = go.Figure()
+        for content_type, grp in df_trend.groupby("type"):
+            fig.add_trace(go.Scatter(
+                x=grp["year_added"], y=grp["count"],
+                name=content_type,
+                mode="lines+markers",
+                line=dict(color=colors.get(content_type, "#888"), width=2.5),
+                marker=dict(size=6, color=colors.get(content_type, "#888")),
+                fill="tozeroy",
+                fillcolor=fillcolors.get(content_type, "rgba(136,136,136,0.08)"),
+            ))
+        return self._apply(fig, "CONTENT ADDED OVER TIME", 360)
+
+    # Animated bar – monthly additions
+    def monthly_animated(self, df_monthly):
+        df_monthly = df_monthly[df_monthly["year_added"] >= 2015].copy()
+        df_monthly["month_name"] = pd.to_datetime(
+            df_monthly["month_added"].astype(int).astype(str), format="%m"
+        ).dt.strftime("%b")
+        fig = px.bar(
+            df_monthly,
+            x="month_name", y="count",
+            animation_frame="year_added",
+            color="count",
+            color_continuous_scale=self.RED_SEQ,
+            range_y=[0, df_monthly["count"].max() * 1.15],
+        )
+        fig.update_traces(marker_line_width=0)
+        fig.update_layout(coloraxis_showscale=False)
+        fig.layout.updatemenus[0].buttons[0].args[1]["frame"]["duration"] = 700
+        fig.layout.updatemenus[0].buttons[0].args[1]["transition"]["duration"] = 400
+        return self._apply(fig, "MONTHLY ADDITIONS BY YEAR (ANIMATED)", 420)
+
+    # Horizontal bar – top countries
+    def top_countries_bar(self, df_c):
+        fig = px.bar(
+            df_c.sort_values("count"),
+            x="count", y="country", orientation="h",
+            color="count",
+            color_continuous_scale=self.RED_SEQ,
+        )
+        fig.update_traces(marker_line_width=0)
+        fig.update_layout(coloraxis_showscale=False)
+        return self._apply(fig, "TOP COUNTRIES BY TITLE COUNT", 440)
+
+    # Stacked bar – country × type
+    def country_type_bar(self, df_ct):
+        fig = px.bar(
+            df_ct, x="count", y="country", color="type",
+            orientation="h", barmode="stack",
+            color_discrete_map={"Movie": "#E50914", "TV Show": "#4CC9F0"},
+        )
+        fig.update_traces(marker_line_width=0)
+        return self._apply(fig, "MOVIES VS TV SHOWS BY COUNTRY", 440)
+
+    # Choropleth map
+    def choropleth(self, df_c):
+        fig = px.choropleth(
+            df_c, locations="country",
+            locationmode="country names",
+            color="count",
+            color_continuous_scale=["#0a0a0a", "#4A0000", "#E50914"],
+            projection="natural earth",
+        )
+        fig.update_geos(
+            bgcolor="#13131A",
+            showcoastlines=True, coastlinecolor="#2a2a2a",
+            showland=True, landcolor="#1a1a1a",
+            showocean=True, oceancolor="#0f0f0f",
+            showframe=False,
+        )
+        fig.update_layout(
+            geo=dict(bgcolor="#13131A"),
+            coloraxis_colorbar=dict(
+                tickfont=dict(color="#555"), title=dict(text="Titles", font=dict(color="#555"))
+            ),
+        )
+        return self._apply(fig, "GLOBAL CONTENT DISTRIBUTION", 440)
+
+    # Horizontal bar – genres
+    def genre_bar(self, df_g):
+        fig = px.bar(
+            df_g.sort_values("count"),
+            x="count", y="genre", orientation="h",
+            color="count",
+            color_continuous_scale=self.RED_SEQ,
+        )
+        fig.update_traces(marker_line_width=0)
+        fig.update_layout(coloraxis_showscale=False)
+        return self._apply(fig, "TOP GENRES", 420)
+
+    # Grouped bar – genre × type
+    def genre_type_bar(self, df_gt):
+        fig = px.bar(
+            df_gt.sort_values("count", ascending=False),
+            x="primary_genre", y="count", color="type",
+            barmode="group",
+            color_discrete_map={"Movie": "#E50914", "TV Show": "#4CC9F0"},
+        )
+        fig.update_traces(marker_line_width=0)
+        fig.update_xaxes(tickangle=-35)
+        return self._apply(fig, "GENRE BREAKDOWN BY TYPE", 380)
+
+    # Heatmap – country × genre
+    def genre_heatmap(self, pivot):
+        fig = px.imshow(
+            pivot,
+            color_continuous_scale=["#0a0a0a", "#4A0000", "#E50914"],
+            aspect="auto",
+            text_auto=True,
+        )
+        fig.update_traces(textfont=dict(size=10, color="#FFF"))
+        return self._apply(fig, "COUNTRY × GENRE HEATMAP", 400)
+
+    # Histogram – release years
+    def release_histogram(self, series):
+        fig = px.histogram(
+            series, x=series,
+            nbins=40,
+            color_discrete_sequence=["#E50914"],
+        )
+        fig.update_traces(marker_line_width=0)
+        return self._apply(fig, "RELEASE YEAR DISTRIBUTION", 340)
 
 # ==============================================================================
 #  6. MAIN CONTROLLER & APPLICATION INTERACTION
@@ -878,7 +940,7 @@ def main():
     if 'loaded' not in st.session_state:
         st.session_state.loaded = False
 
-    # Staggered loading: check for default files to create first-impression WOW factor
+    # Auto-load detection
     if not st.session_state.loaded:
         default_paths = [
             "data/netflix_titles.csv",
@@ -894,6 +956,8 @@ def main():
                     break
                 except Exception:
                     pass
+
+    CHART_CFG = dict(use_container_width=True, config={"displayModeBar": False})
 
     # ==================== SIDEBAR LAYOUT ====================
     with st.sidebar:
@@ -923,7 +987,7 @@ def main():
 
         st.markdown('<div class="sb-sec-label">NAVIGATION</div>', unsafe_allow_html=True)
         
-        # Navigation controlled via custom styled vertical radio buttons
+        # Navigation radio pills
         selected_nav = st.radio(
             "Navigation Menu",
             options=["Overview", "Content Trends", "Geographic Analysis", "Genre Deep Dive", "Search & Filter"],
@@ -946,10 +1010,9 @@ def main():
             )
 
     # ==================== MAIN BODY LAYOUT ====================
-    # Wrap in custom container to isolate margins
     st.markdown('<div class="main-body-container">', unsafe_allow_html=True)
 
-    # Hero section with Bebas Neue, Clash Display, and Instrument Serif
+    # Hero Banner
     st.markdown("""
     <div class="fade-up-1">
         <div class="hero-eyebrow">DATA INTELLIGENCE PLATFORM</div>
@@ -965,7 +1028,7 @@ def main():
     </div>
     """, unsafe_allow_html=True)
 
-    # If dataset has not been uploaded/found, display beautiful empty state
+    # Empty State uploader invitation
     if not st.session_state.loaded:
         st.markdown("""
         <div class="fade-up-2">
@@ -978,17 +1041,16 @@ def main():
         st.markdown('</div>', unsafe_allow_html=True)
         return
 
-    # Set up analysis backend
+    # Backend Setup
     az = NetflixAnalyzer(st.session_state.df)
     viz = NetflixVisualizer()
 
-    # Main Content Navigation Bar (synced with sidebar)
+    # Content Navigation Header sync
     st.markdown('<div class="fade-up-2">', unsafe_allow_html=True)
     cols = st.columns(5)
     tab_names = ["Overview", "Content Trends", "Geographic Analysis", "Genre Deep Dive", "Search & Filter"]
     tab_icons = ["⬚", "📈", "🌍", "🎬", "🔍"]
 
-    # Dynamic styling for active tab button
     active_tab_key = f"tab_btn_{st.session_state.current_tab.replace(' ', '_')}"
     st.markdown(f"""
     <style>
@@ -1006,14 +1068,12 @@ def main():
             st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # Space separator
     st.markdown('<br>', unsafe_allow_html=True)
 
-    # RENDER SELECTED TAB
+    # OVERVIEW TAB
     if st.session_state.current_tab == "Overview":
         st.markdown('<div class="fade-up-3">', unsafe_allow_html=True)
         
-        # 4 Column KPI metrics row
         movie_pct = int((az.total_movies / az.total_titles) * 100)
         show_pct = int((az.total_shows / az.total_titles) * 100)
         
@@ -1055,77 +1115,88 @@ def main():
         """, unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # Charts Section
         st.markdown('<div class="fade-up-4">', unsafe_allow_html=True)
         c1, c2 = st.columns([1, 1.5])
         
         with c1:
-            st.markdown('<div class="chart-section-label">// CONTENT TYPE SPLIT (Pie Chart)</div>', unsafe_allow_html=True)
+            st.markdown('<div class="chart-section-label">// CONTENT TYPE SPLIT (Plotly Donut)</div>', unsafe_allow_html=True)
             st.markdown('<div class="chart-card">', unsafe_allow_html=True)
-            fig1 = viz.plot_pie_chart(az.get_type_split())
-            st.pyplot(fig1, clear_figure=True)
-            plt.close(fig1)
+            st.plotly_chart(viz.content_donut(az.type_counts()), **CHART_CFG)
             st.markdown('</div>', unsafe_allow_html=True)
             
         with c2:
-            st.markdown('<div class="chart-section-label">// GENRE METRIC SUMMARY (Bar Chart)</div>', unsafe_allow_html=True)
+            st.markdown('<div class="chart-section-label">// RATING METRICS SPREAD (Plotly Horizontal Bar)</div>', unsafe_allow_html=True)
             st.markdown('<div class="chart-card">', unsafe_allow_html=True)
-            fig2 = viz.plot_bar_chart(az.get_top_genres(10))
-            st.pyplot(fig2, clear_figure=True)
-            plt.close(fig2)
+            st.plotly_chart(viz.ratings_bar(az.rating_counts()), **CHART_CFG)
             st.markdown('</div>', unsafe_allow_html=True)
 
-        st.markdown('<div class="chart-section-label">// EVOLUTION SCATTER DISTRIBUTION (Scatter Plot)</div>', unsafe_allow_html=True)
+        st.markdown('<div class="chart-section-label">// MOVEMENT ALONG RELEASE CALENDAR (Plotly Histogram)</div>', unsafe_allow_html=True)
         st.markdown('<div class="chart-card">', unsafe_allow_html=True)
-        fig3 = viz.plot_scatter_plot(az.get_scatter_data())
-        st.pyplot(fig3, clear_figure=True)
-        plt.close(fig3)
+        st.plotly_chart(viz.release_histogram(az.release_year_dist()), **CHART_CFG)
         st.markdown('</div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
+    # CONTENT TRENDS TAB
     elif st.session_state.current_tab == "Content Trends":
         st.markdown('<div class="fade-up-3">', unsafe_allow_html=True)
-        st.markdown('<div class="chart-section-label">// METRIC INCREASE OVER CALENDAR TIME (Line Chart)</div>', unsafe_allow_html=True)
+        st.markdown('<div class="chart-section-label">// GROWTH TIMELINE DISTRIBUTION (Plotly Line Area)</div>', unsafe_allow_html=True)
         st.markdown('<div class="chart-card">', unsafe_allow_html=True)
-        fig1 = viz.plot_line_chart(az.get_yearly_trend())
-        st.pyplot(fig1, clear_figure=True)
-        plt.close(fig1)
+        st.plotly_chart(viz.yearly_trend_area(az.yearly_trend()), **CHART_CFG)
         st.markdown('</div>', unsafe_allow_html=True)
 
-        st.markdown('<div class="chart-section-label">// RUN TIME FREQUENCY RANGE (Histogram)</div>', unsafe_allow_html=True)
+        st.markdown('<div class="chart-section-label">// MONTHLY ADDITION BEHAVIORS (Plotly Animated Bar)</div>', unsafe_allow_html=True)
         st.markdown('<div class="chart-card">', unsafe_allow_html=True)
-        fig2 = viz.plot_histogram(az.get_duration_distribution())
-        st.pyplot(fig2, clear_figure=True)
-        plt.close(fig2)
+        st.plotly_chart(viz.monthly_animated(az.monthly_trend()), **CHART_CFG)
         st.markdown('</div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
+    # GEOGRAPHIC TAB
     elif st.session_state.current_tab == "Geographic Analysis":
         st.markdown('<div class="fade-up-3">', unsafe_allow_html=True)
-        st.markdown('<div class="chart-section-label">// HIGHEST PRODUCING COUNTRIES DIRECT COMPARE (Bar Chart)</div>', unsafe_allow_html=True)
+        st.markdown('<div class="chart-section-label">// CHOROPLETH WORLD DISTRIBUTION (Plotly Earth Map)</div>', unsafe_allow_html=True)
         st.markdown('<div class="chart-card">', unsafe_allow_html=True)
-        fig1 = viz.plot_bar_chart(az.get_top_countries(10))
-        st.pyplot(fig1, clear_figure=True)
-        plt.close(fig1)
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.plotly_chart(viz.choropleth(az.get_top_countries(50)), **CHART_CFG)
         st.markdown('</div>', unsafe_allow_html=True)
 
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown('<div class="chart-section-label">// PRODUCING GEOGRAPHIES RANKING (Plotly Bar)</div>', unsafe_allow_html=True)
+            st.markdown('<div class="chart-card">', unsafe_allow_html=True)
+            st.plotly_chart(viz.top_countries_bar(az.get_top_countries(15)), **CHART_CFG)
+            st.markdown('</div>', unsafe_allow_html=True)
+        with c2:
+            st.markdown('<div class="chart-section-label">// GEOGRAPHIC FORMAT RATIOS (Plotly Stacked Bar)</div>', unsafe_allow_html=True)
+            st.markdown('<div class="chart-card">', unsafe_allow_html=True)
+            st.plotly_chart(viz.country_type_bar(az.country_type_split(10)), **CHART_CFG)
+            st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # GENRE DEEP DIVE TAB
     elif st.session_state.current_tab == "Genre Deep Dive":
         st.markdown('<div class="fade-up-3">', unsafe_allow_html=True)
-        st.markdown('<div class="chart-section-label">// GENRE FREQUENCY SPLIT (Bar Chart)</div>', unsafe_allow_html=True)
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown('<div class="chart-section-label">// LANDSCAPE SPLITS (Plotly Bar)</div>', unsafe_allow_html=True)
+            st.markdown('<div class="chart-card">', unsafe_allow_html=True)
+            st.plotly_chart(viz.genre_bar(az.get_top_genres(12)), **CHART_CFG)
+            st.markdown('</div>', unsafe_allow_html=True)
+        with c2:
+            st.markdown('<div class="chart-section-label">// GENRE METRICS CROSSOVER (Plotly Grouped Bar)</div>', unsafe_allow_html=True)
+            st.markdown('<div class="chart-card">', unsafe_allow_html=True)
+            st.plotly_chart(viz.genre_type_bar(az.genre_type(10)), **CHART_CFG)
+            st.markdown('</div>', unsafe_allow_html=True)
+
+        st.markdown('<div class="chart-section-label">// REGIONAL GENRE PREFERENCES (Plotly Heatmap)</div>', unsafe_allow_html=True)
         st.markdown('<div class="chart-card">', unsafe_allow_html=True)
-        fig1 = viz.plot_bar_chart(az.get_top_genres(10))
-        st.pyplot(fig1, clear_figure=True)
-        plt.close(fig1)
+        st.plotly_chart(viz.genre_heatmap(az.genre_heatmap_data()), **CHART_CFG)
         st.markdown('</div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
+    # SEARCH & FILTER TAB
     elif st.session_state.current_tab == "Search & Filter":
         st.markdown('<div class="fade-up-3">', unsafe_allow_html=True)
         
-        # Layout terminal filter controllers
         fc1, fc2, fc3 = st.columns([1.5, 2, 2])
-        
         with fc1:
             type_filter = st.selectbox("Content Type Filter", ["All", "Movie", "TV Show"])
         with fc2:
@@ -1135,10 +1206,8 @@ def main():
             ymin, ymax = az.year_range
             year_filter = st.slider("Historic Release Year", ymin, ymax, (ymin, ymax))
 
-        # Terminal search bar
         search_query = st.text_input("Terminal Search (Title or Director)", placeholder="Type command query here...")
         
-        # Parse filtering queries
         result = az.get_filtered_results(type_filter, rating_filter, "", year_filter, search_query)
         
         st.markdown(f'<div class="chart-section-label">// MATCHED CATALOGUE COUNT: {len(result):,} entries</div>', unsafe_allow_html=True)
@@ -1147,9 +1216,7 @@ def main():
         if len(result) == 0:
             st.markdown('<div class="empty-state">NO DATA FOUND</div>', unsafe_allow_html=True)
         else:
-            # Display results in HTML cards!
             cols_cards = st.columns(3)
-            # Display top 30 filtered results for optimal performance
             for idx, row in result.head(30).reset_index().iterrows():
                 col_idx = idx % 3
                 type_color = "var(--red)" if row['type'] == 'Movie' else "var(--accent-blue)"
@@ -1175,7 +1242,7 @@ def main():
     # Footer
     st.markdown("""
     <div style="text-align: center; font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted); padding: 48px 0 24px; border-top: 1px solid var(--border); margin-top: 48px;">
-        NETFLIX DATA INTELLIGENCE · BUILT WITH PYTHON & MATPLOTLIB · 2026
+        NETFLIX DATA INTELLIGENCE · BUILT WITH PYTHON & PLOTLY · 2026
     </div>
     """, unsafe_allow_html=True)
 
