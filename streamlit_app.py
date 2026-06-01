@@ -940,23 +940,6 @@ def main():
     if 'loaded' not in st.session_state:
         st.session_state.loaded = False
 
-    # Auto-load detection
-    if not st.session_state.loaded:
-        default_paths = [
-            "data/netflix_titles.csv",
-            "netflix_titles.csv",
-            "netflix_analysis/data/netflix_titles.csv"
-        ]
-        for path in default_paths:
-            if os.path.exists(path):
-                try:
-                    loader = NetflixDataLoader(path)
-                    st.session_state.df = loader.preprocess()
-                    st.session_state.loaded = True
-                    break
-                except Exception:
-                    pass
-
     CHART_CFG = dict(use_container_width=True, config={"displayModeBar": False})
 
     # ==================== SIDEBAR LAYOUT ====================
@@ -1028,20 +1011,26 @@ def main():
     </div>
     """, unsafe_allow_html=True)
 
-    # Empty State uploader invitation
+    # Invitation welcome screen - strictly displayed when loaded is False!
     if not st.session_state.loaded:
         st.markdown("""
         <div class="fade-up-2">
-            <div class="empty-state">NO DATA FOUND</div>
-            <p style="text-align: center; color: var(--muted); font-size: 15px;">
-                Please upload the netflix_titles.csv from the sidebar dataset selector to initialize the Intelligence engine.
+            <div class="empty-state" style="font-family: 'Bebas Neue', sans-serif !important; font-size: 80px !important; text-align: center; color: var(--red); animation: pulse 3s infinite; margin-top: 40px;">N</div>
+            <div style="text-align: center; font-family: 'Clash Display', sans-serif; font-size: 24px; font-weight: 700; color: var(--white); margin-bottom: 8px;">Upload your dataset to begin</div>
+            <p style="text-align: center; color: var(--muted); font-size: 15px; max-width: 480px; margin: 0 auto 24px; line-height: 1.6;">
+                Load <code style="color: var(--red); background: rgba(229, 9, 20, 0.08); padding: 4px 8px; border-radius: 4px; font-family: 'DM Mono', monospace; font-size: 13px; border: 1px solid rgba(229, 9, 20, 0.15);">netflix_titles.csv</code> from the sidebar. All analytical modeling and visual rendering runs locally in your browser.
             </p>
+            <div style="display: flex; justify-content: center; margin-bottom: 40px;">
+                <div style="display: inline-flex; align-items: center; gap: 8px; padding: 10px 20px; background: var(--card); border: 1px solid var(--border); border-radius: 100px; font-family: 'DM Mono', monospace; font-size: 12px; color: var(--muted);">
+                    ← Use the sidebar uploader to get started
+                </div>
+            </div>
         </div>
         """, unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
         return
 
-    # Backend Setup
+    # Backend Setup (Only when a dataset is explicitly uploaded!)
     az = NetflixAnalyzer(st.session_state.df)
     viz = NetflixVisualizer()
 
